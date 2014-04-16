@@ -1,0 +1,190 @@
+package com.BeauTech.androidserver;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.ObjectInputStream;
+import java.io.ObjectOutputStream;
+import java.net.ServerSocket;
+import java.net.Socket;
+import java.net.SocketTimeoutException;
+
+import android.annotation.SuppressLint;
+import android.app.Activity;
+import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
+import android.os.Message;
+import android.util.Log;
+import android.view.View;
+import android.view.View.OnClickListener;
+import android.widget.Button;
+import android.widget.TextView;
+import android.widget.Toast;
+
+public class MainActivity extends Activity implements OnClickListener
+{
+
+public static final String TAG = "USBCommActivity";
+public static final int TIMEOUT = 10;
+private Button btnStartServer;
+
+
+private String connectionStatus = null;
+private final String sendMsg = "Hello From Server";
+
+
+@SuppressLint("HandlerLeak")
+Handler mHandler = new Handler(){
+	public void handleMessage(final Message msg){
+		runOnUiThread(new Runnable(){
+			@Override
+			public void run() {
+				clientText.append(msg.obj.toString());		
+			}
+		});
+		
+	}
+};
+private ServerSocket server = null;
+private Socket client = null;
+private ObjectOutputStream out;
+private ObjectInputStream in;
+public TextView clientText;
+
+public static InputStream nis = null;
+
+@Override
+public void onCreate(Bundle savedInstanceState)
+{
+	super.onCreate(savedInstanceState);
+	setContentView(R.layout.activity_main);
+
+	btnStartServer = (Button) findViewById(R.id.btnView);
+	btnStartServer.setOnClickListener(this);
+
+	clientText= (TextView) findViewById(R.id.textViewFromClient);
+
+
+} //end oncreate
+
+/**
+* Thread to initialize Socket connection
+*/
+private final Runnable initializeConnection = new Thread()
+{
+	@Override
+	public void run()
+	{
+		Looper.prepare();
+		// 	initialize server socket
+		try
+		{
+			server = new ServerSocket(38300);
+			server.setSoTimeout(MainActivity.TIMEOUT * 1000);
+
+			//	attempt to accept a connection
+			client = server.accept();
+
+			out = new ObjectOutputStream(client.getOutputStream());
+			in = new ObjectInputStream(client.getInputStream());
+
+			MainActivity.nis = client.getInputStream();
+			try
+			{
+				//
+
+				String message;
+				// get message
+				message = (String) in.readObject();
+				Message newMessage = Message.obtain();
+				newMessage.obj = message;
+				mHandler.handleMessage(newMessage);
+				
+				//send message
+				out.writeObject(sendMsg);
+				
+				byte[] bytes = new byte[1024];
+				int numRead = 0;
+				while ((numRead = MainActivity.nis.read(bytes)) >= 0)
+				{
+					connectionStatus = new String(bytes, 0, numRead);
+					mHandler.post(showConnectionStatus);
+				}
+				
+			}catch (IOException ioException){
+				Log.e(MainActivity.TAG, "" + ioException);
+			} catch (ClassNotFoundException e) {
+				// TODO Auto-generated catch block
+				e.printStackTrace();
+			}
+		}
+		catch (SocketTimeoutException e){
+			connectionStatus = "Connection has timed out! Please try again";
+			mHandler.post(showConnectionStatus);
+		}
+		catch (IOException e){
+			Log.e(MainActivity.TAG, "" + e);
+		}
+
+		if (client != null)
+		{
+			connectionStatus = "Connection was succesful!";
+			mHandler.post(showConnectionStatus);
+		}
+	}
+};
+
+// Runnable to show pop-up for connection status
+private final Runnable showConnectionStatus = new Runnable()
+{
+	@Override
+	public void run()
+	{
+		Toast.makeText(MainActivity.this, connectionStatus, Toast.LENGTH_SHORT).show();
+	}
+};
+
+
+public void onClick(View v)
+{
+	//initialize server socket in a new separate thread
+	new Thread(initializeConnection).start();
+	String msg = "Attempting to connect...";
+	Toast.makeText(MainActivity.this, msg, msg.length()).show();
+} //end on click
+
+@Override
+public void onDestroy()
+{
+	super.onDestroy();
+	try
+	{
+		// 	Close the opened resources on activity destroy
+		MainActivity.nis.close();
+		in.close();
+		out.close();
+		if (server != null)
+		{
+			server.close();
+		}
+	}
+	catch (IOException ec)
+	{
+		Log.e(MainActivity.TAG, "Cannot close server socket" + ec);
+	}
+} // end on destroy
+
+public void clickedStop(View V){
+	//mHandler.("closed");
+	//mHandler.post(showConnectionStatus);
+	//out.writeObject("close");
+	try {
+		out.writeObject("Hello Again?");
+	} catch (IOException e) {
+		// TODO Auto-generated catch block
+		e.printStackTrace();
+	}
+	
+	
+}
+
+}
